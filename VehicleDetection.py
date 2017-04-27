@@ -11,7 +11,6 @@ import time
 from scipy.ndimage.measurements import label
 from moviepy.editor import VideoFileClip
 import pickle
-from pprint import pprint
 from windows import windows
 
 ######### MODEL TRAINING #################
@@ -31,15 +30,15 @@ def extract_features(imgs, color_space='RGB', spatial_size=(32, 32),
         # apply color conversion if other than 'RGB'
         if color_space != 'RGB':
             if color_space == 'HSV':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
             elif color_space == 'LUV':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2LUV)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2LUV)
             elif color_space == 'HLS':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
             elif color_space == 'YUV':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
             elif color_space == 'YCrCb':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2YCrCb)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
         else:
             feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -112,8 +111,10 @@ def color_hist(img, nbins=32, bins_range=(0, 256)):
 
 
 ###############################################################
-########
+######## Function for prediction #####
 
+### This function convert the input image to the same color space
+### of the trained model, is used in the find_cars function
 def convert_color(img, conv='RGB2YCrCb'):
     if conv == 'RGB2HSV':
         return cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
@@ -123,9 +124,12 @@ def convert_color(img, conv='RGB2YCrCb'):
         return cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     if conv == 'RGB2LUV':
         return cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
+    if conv == 'RGB2YUV':
+        return cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
 
+# This function return an array of windows were cars are found
 # Define a single function that can extract features using hog sub-sampling and make predictions
-def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, cell_per_block, spatial_size, hist_bins, color_space):
+def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, cell_per_block, spatial_size, hist_bins):
     bbox = []
     #draw_img = np.copy(img)
 
@@ -177,8 +181,7 @@ def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, ce
 
             # Scale features and make a prediction
             test_features = X_scaler.transform(
-                np.hstack((hog_features)).reshape(1, -1))
-                #np.hstack((spatial_features, hist_features, hog_features)).reshape(1, -1))
+                np.hstack((spatial_features, hist_features, hog_features)).reshape(1, -1))
             # test_features = X_scaler.transform(np.hstack((shape_feat, hist_feat)).reshape(1, -1))
             test_prediction = svc.predict(test_features)
 
@@ -192,8 +195,11 @@ def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, ce
 
     return bbox
 
+## This function load the trained model parameters from pickle file
+## Define different windows sizes in scales array
+## Call the find_cars function and return the windows with positive detection array
 def get_boxes(img):
-    with open('modelYUV.pickle', 'rb') as g:
+    with open('modelHSV.pickle', 'rb') as g:
         modelp = pickle.load(g)
 
     scales = [1,1.5] #np.arange(0.6, 2.0, 0.7, np.float64)
@@ -210,8 +216,7 @@ def get_boxes(img):
                                   modelp['pix_per_cell'],
                                   modelp['cell_per_block'],
                                   modelp['spatial_size'],
-                                  modelp['hist_bins'],
-                                  modelp['color_space'])
+                                  modelp['hist_bins'])
         boxes.extend(bbox)
     return boxes
 
@@ -233,7 +238,8 @@ def apply_threshold(heatmap, threshold):
     # Return thresholded map
     return heatmap
 
-
+## Return a box with Car Label, based on heatmap
+##
 def draw_labeled_bboxes(img, labels):
     # Iterate through all detected cars
     for car_number in range(1, labels[1] + 1):
@@ -246,7 +252,7 @@ def draw_labeled_bboxes(img, labels):
         bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
         x = np.max(nonzerox) - np.min(nonzerox)
         y = np.max(nonzeroy) - np.min(nonzeroy)
-        if ((x > 50) | (y > 60 )):
+        if ((x > 30) | (y > 30 )):
             # Draw the box on the image
             text = "Car "#+str(car_number)
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -255,11 +261,12 @@ def draw_labeled_bboxes(img, labels):
     # Return the image
     return img
 
+## This function calls the different function to extract heatmap of found windows
 
 def heat_step(image, boxlist):
     heat = np.zeros_like(image[:, :, 0]).astype(np.float)
     heat = add_heat(heat, boxlist)
-    heat = apply_threshold(heat, 2)
+    heat = apply_threshold(heat, 1)
     heatmap = np.clip(heat, 0, 255)
     labels = label(heatmap)
     result = draw_labeled_bboxes(np.copy(image), labels)
@@ -267,7 +274,8 @@ def heat_step(image, boxlist):
     return result
 
 
-
+### This is the main function to be called from Moviepy clip.Fl_image(pipeline)
+###
 def pipeline(img):
     box_list = get_boxes(img)
     win.set_windows(box_list)
@@ -275,9 +283,12 @@ def pipeline(img):
     print(len(win.get_windows()))
     return out_img
 
-
+#There is 2 main modes,
+# Training mode is used to train a new model, and save the result in a pickle file
+# Non Training mode
 if __name__ == "__main__":
 
+    # Modify Train to True when want to train a model
     train = False
 
     if train == True:
@@ -300,8 +311,8 @@ if __name__ == "__main__":
         hog_channel = "ALL"  # Can be 0, 1, 2, or "ALL"
         spatial_size = (32, 32)  # Spatial binning dimensions
         hist_bins = 32 # Number of histogram bins
-        spatial_feat = False  # Spatial features on or off
-        hist_feat = False  # Histogram features on or off
+        spatial_feat = True  # Spatial features on or off
+        hist_feat = True  # Histogram features on or off
         hog_feat = True  # HOG features on or off
         y_start_stop = [400, 550]  # Min and max in y to search in slide_window()
 
@@ -348,6 +359,8 @@ if __name__ == "__main__":
         print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
         # Check the prediction time for a single sample
         t = time.time()
+
+        # Dictionary for pickle file to save.
         model = {}
         model['svc'] = svc
         model['y_start_stop'] = y_start_stop
@@ -359,115 +372,22 @@ if __name__ == "__main__":
         model['hist_bins'] = hist_bins
         model['color_space'] = color_space
 
-        with open('modelYUV.pickle', 'wb') as f:
+        with open('modelHSV.pickle', 'wb') as f:
             pickle.dump(model, f)
 
 
     else:
+
+        # Define windows object in order to track the detection of previous frames
         win = windows()
         # Apply process image to video.
-        #white_output = 'images/project_video_0_4_H1.mp4'
-        #clip1 = VideoFileClip("images/project_video.mp4").subclip(27,37)
+        #white_output = 'images/project_video_3S.mp4'
+        #clip1 = VideoFileClip("images/project_video.mp4").subclip(40,43)
         #white_clip = clip1.fl_image(pipeline)  # NOTE: this function expects color images!!
         #white_clip.write_videofile(white_output, audio=False)
 
-        img = mpimg.imread('images/test6.jpg')
+        img = cv2.imread('images/test6.jpg')
         imagen_prueba = pipeline(img)
-        #imagen_prueba = cv2.cvtColor(imagen_prueba, cv2.COLOR_BGR2RGB)
+        imagen_prueba = cv2.cvtColor(imagen_prueba, cv2.COLOR_BGR2RGB)
         plt.imshow(imagen_prueba)
         plt.show()
-
-
-
-        '''  
-        with open('model4.pickle', 'rb') as g:
-            modelp = pickle.load(g)
-
-        #print(modelp)
-
-        img = cv2.imread('images/test6.jpg')  # modified from mpimg
-
-
-        #ystart = 450
-        #ystop = 720
-        scales = np.arange(0.6,2.3,0.1,np.float64)
-        boxes =[]
-        for scale in scales:
-            #print(scale)
-            out_img, bbox = find_cars(np.copy(img),
-                                      modelp['y_start_stop'][0],
-                                      modelp['y_start_stop'][1],
-                                      scale,
-                                      modelp['svc'],
-                                      modelp['X_scaler'],
-                                      modelp['orient'],
-                                      modelp['pix_per_cell'],
-                                      modelp['cell_per_block'],
-                                      modelp['spatial_size'],
-                                      modelp['hist_bins'])
-            #print(len(bbox))
-            #print(bbox)
-            boxes.extend(bbox)
-            #print('2', boxes)
-        #plt.imshow(out_img)
-        #plt.show()
-
-    #############################################################
-    ####### HEAT MAP
-        # Read in a pickle file with bboxes saved
-        # Each item in the "all_bboxes" list will contain a
-        # list of boxes for one of the images shown above
-        #box_list = boxes #pickle.load(open("bbox_pickle.p", "rb"))
-        #print(bbox)
-        # Read in image similar to one shown above
-        #image3 = img #mpimg.imread('images/ejemplo1.jpg')  #changed from mpimg
-        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        heat = np.zeros_like(image3[:, :, 0]).astype(np.float)
-
-        # Add heat to each box in box list
-        heat = add_heat(heat, box_list)
-
-        # Apply threshold to help remove false positives
-        heat = apply_threshold(heat, 8)
-
-        # Visualize the heatmap when displaying
-        heatmap = np.clip(heat, 0, 255)
-
-        # Find final boxes from heatmap using label function
-        image3 = cv2.cvtColor(image3, cv2.COLOR_BGR2RGB)
-        labels = label(heatmap)
-        draw_img = draw_labeled_bboxes(np.copy(image3), labels)
-
-        fig = plt.figure()
-        plt.subplot(121)
-        plt.imshow(draw_img)
-        plt.title('Car Positions')
-        plt.subplot(122)
-        plt.imshow(heatmap, cmap='hot')
-        plt.title('Heat Map')
-        fig.tight_layout()
-        plt.show()
-
-
-
-
-
-
-        imagen_prueba = pipeline(img)
-        plt.imshow(out_img)
-        plt.show()
-  
-}
-        # Apply process image to video.
-        white_output = 'images/test_video_Processed.mp4'
-        clip1 = VideoFileClip("images/test_video.mp4")
-        white_clip = clip1.fl_image(pipeline)  # NOTE: this function expects color images!!
-        white_clip.write_videofile(white_output, audio=False)
-        '''
-        ### pickle models
-        # modelp.pickle, HSV (32,32), 32 bins
-        # modelC.pickle, YCrCb (16,16), 16 bins
-        # modelC32.pickle, YCrCb (32,32), 32 bins
-        # modelR32.pickle, RGB  (32,32), 32 bins
-        # modelH32.pickle, HSV (32,32), 32 bins
-        # modelH320.pickle, HSV (32,32), 32 bins Hog channel 0

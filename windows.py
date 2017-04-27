@@ -10,7 +10,7 @@ class windows:
 
 
     def get_windows(self):
-        return self._windows[-8:]
+        return self._windows[-50:]
 
     def del_windows(self):
         self._windows=[]
