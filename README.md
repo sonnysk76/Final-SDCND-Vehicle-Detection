@@ -12,7 +12,7 @@
 [lag]: proj/lagging_window.JPG
 [delay]: proj/delay.JPG
 
-#Vehicle Detection and Tracking
+# Vehicle Detection and Tracking
 Vehicle Detection Project
 
 The goals / steps of this project are the following:
