@@ -78,7 +78,8 @@ if __name__ == "__main__":
         # Read in cars and notcars for trainig
 ```
 - Read the images set, cars and no cars and create an array for each.
-- After there a space to set the training parameters.
+- After that, there is a space to set the training parameters.
+
 Parameters used to train the model.
 
 ```        ### Training Parameters
